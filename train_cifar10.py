@@ -71,7 +71,10 @@ args = parser.parse_args()
 usewandb = ~args.nowandb
 if usewandb:
     import wandb    
-    watermark = "{}_lr{}_{}".format(args.net, args.lr,args.dataset)
+    if args.l1_constraint == True:
+        watermark = "{}_lr{}_{}_depth{}_qeps{}_keps{}".format(args.net, args.lr,args.dataset,args.depth,args.q_eps,args.k_eps)
+    else:
+        watermark = "{}_lr{}_{}_depth{}_{}".format(args.net, args.lr,args.dataset,args.depth)
     wandb.init(project="cifar10-challange",
             name=watermark)
     wandb.config.update(args)
@@ -361,8 +364,9 @@ def train(epoch):
             before = attens.fn.before
             after = attens.fn.after
             #print('i',i) 
-            diffnorm.append([i, attens.fn.diffnorm.cpu().detach().numpy()])
-            attens.fn.to_qkv.weight.data.clamp(0,1) 
+            if args.net == 'vit':
+                diffnorm.append([i, attens.fn.diffnorm.cpu().detach().numpy()])
+            #attens.fn.to_qkv.weight.data.clamp(0,1) 
             max = attens.fn.to_qkv.weight.data.max().cpu().detach().numpy()
             min = attens.fn.to_qkv.weight.data.min().cpu().detach().numpy()
             mean = attens.fn.to_qkv.weight.data.mean().cpu().detach().numpy()        
@@ -432,8 +436,10 @@ def train(epoch):
         return train_loss/(batch_idx+1),max,min,mean,before,after,sum(q_norm)/len(q_norm),sum(k_norm)/len(k_norm)
     else:
     '''
-    
-    return train_loss/(batch_idx+1),max,min,mean,before,after,diffnorm
+    if args.net == 'vit':
+        return train_loss/(batch_idx+1),max,min,mean,before,after,diffnorm
+    else:
+        return train_loss/(batch_idx+1),max,min,mean,before,after
 ##### Validation
 def test(epoch):
     global best_acc
@@ -490,7 +496,10 @@ for epoch in range(start_epoch, args.n_epochs):
         trainloss,max,min,mean,before, after, q_norm_mean,k_norm_mean = train(epoch)
     else:
     '''
-    trainloss,max,min,mean,before, after,diffnorm = train(epoch)
+    if args.net == 'vit':
+        trainloss,max,min,mean,before, after,diffnorm = train(epoch)
+    else:
+        trainloss,max,min,mean,before, after = train(epoch)
     val_loss, acc = test(epoch)
     
     scheduler.step(epoch-1) # step cosine scheduling
@@ -512,6 +521,8 @@ for epoch in range(start_epoch, args.n_epochs):
             '''
             wandb.log({'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
         "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"after_min":after_min,"after_max":after_max,"after_mean":after_mean})
+            for layer in range(args.depth):
+                wandb.log({f'diffnorm:{layer}':diffnorm[layer][1]})
         else:
             wandb.log({'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
         "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"matrix_after_min":after_min,"matrix_after_max":after_max,"matrix_after_mean":after_mean})           
