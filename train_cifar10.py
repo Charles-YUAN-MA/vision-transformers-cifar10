@@ -57,7 +57,7 @@ parser.add_argument('--clamp', default=False, type=bool)
 parser.add_argument('--clamp_bottom', default="0", type=float)
 parser.add_argument('--clamp_ceil', default="1", type=float)
 
-parser.add_argument('--l1_constraint', default=True, type=bool)
+parser.add_argument('--l1_constraint', default=False, type=bool)
 parser.add_argument('--q_eps', default="0.0442", type=float)
 parser.add_argument('--k_eps', default="0.0625", type=float)
 
@@ -83,6 +83,9 @@ if args.dataset == 'cifar10':
     no_classes=10
 elif args.dataset == 'cifar100':
     no_classes=100
+elif args.dataset == 'imagenet100':
+    no_classes=100
+
 bs = int(args.bs)
 imsize = int(args.size)
 
@@ -120,16 +123,43 @@ if aug:
     transform_train.transforms.insert(0, RandAugment(N, M))
 
 # Prepare dataset
+if args.dataset == 'imagenet100':
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
+    import torchvision.datasets as datasets
+    datasetdir = '//scratch/izar/yuma/cifar100'
+    traindir = os.path.join(datasetdir, 'train.X')
+    valdir = os.path.join(datasetdir, 'val.X')
+
 if args.dataset == 'cifar10':
     trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
 elif args.dataset == 'cifar100':
     trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
+elif args.dataset == 'imagenet100':
+    train_dataset = datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))    
+
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=bs, shuffle=True, num_workers=8)
 
 if args.dataset == 'cifar10':
     testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 elif args.dataset == 'cifar100':
     testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
+elif args.dataset == 'imagenet100':
+    val_dataset = datasets.ImageFolder(
+        valdir,
+        transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=8)
 
 #classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -521,8 +551,8 @@ for epoch in range(start_epoch, args.n_epochs):
             '''
             wandb.log({'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
         "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"after_min":after_min,"after_max":after_max,"after_mean":after_mean})
-            for layer in range(args.depth):
-                wandb.log({f'diffnorm:{layer}':diffnorm[layer][1]})
+            #for layer in range(args.depth):
+            #    wandb.log({f'diffnorm:{layer}':diffnorm[layer][1]})
         else:
             wandb.log({'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
         "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"matrix_after_min":after_min,"matrix_after_max":after_max,"matrix_after_mean":after_mean})           
@@ -532,6 +562,8 @@ for epoch in range(start_epoch, args.n_epochs):
         writer.writerow(list_loss) 
         writer.writerow(list_acc) 
     print(list_loss)
+
+torch.save(net.state_dict(), '//scratch/izar/yuma/weight/{}_lr{}_{}_depth{}_{}.pt',format(args.net, args.lr,args.dataset,args.depth))
 
 # writeout wandb
 if usewandb:
