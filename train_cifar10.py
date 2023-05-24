@@ -74,7 +74,7 @@ if usewandb:
     if args.l1_constraint == True:
         watermark = "{}_lr{}_{}_depth{}_qeps{}_keps{}".format(args.net, args.lr,args.dataset,args.depth,args.q_eps,args.k_eps)
     else:
-        watermark = "{}_lr{}_{}_depth{}_{}".format(args.net, args.lr,args.dataset,args.depth)
+        watermark = "{}_lr{}_{}_depth{}".format(args.net, args.lr,args.dataset,args.depth)
     wandb.init(project="cifar10-challange",
             name=watermark)
     wandb.config.update(args)
@@ -126,7 +126,8 @@ if aug:
 if args.dataset == 'imagenet100':
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],std=[0.229, 0.224, 0.225])
     import torchvision.datasets as datasets
-    datasetdir = '//scratch/izar/yuma/cifar100'
+    datasetdir = '../data/imagenet100'
+    #datasetdir = '//scratch/izar/yuma/cifar100'
     traindir = os.path.join(datasetdir, 'train.X')
     valdir = os.path.join(datasetdir, 'val.X')
 
@@ -395,7 +396,7 @@ def train(epoch):
             after = attens.fn.after
             #print('i',i) 
             if args.net == 'vit':
-                diffnorm.append([i, attens.fn.diffnorm.cpu().detach().numpy()])
+                diffnorm.append(attens.fn.diffnorm.cpu().detach().numpy())
             #attens.fn.to_qkv.weight.data.clamp(0,1) 
             max = attens.fn.to_qkv.weight.data.max().cpu().detach().numpy()
             min = attens.fn.to_qkv.weight.data.min().cpu().detach().numpy()
@@ -435,7 +436,7 @@ def train(epoch):
                 #print('k_norm',torch.norm(k,p=1))
                 #k_norm.append(torch.norm(k,p=1))
                 '''
-                print('q_norm',torch.norm(q,p=1))
+                #print('q_norm',torch.norm(q,p=1))
 
                 q1 = project_onto_l1_ball(q,args.q_eps)
                 #print('q1_norm',torch.norm(q1,p=1))
@@ -549,8 +550,13 @@ for epoch in range(start_epoch, args.n_epochs):
         "after_min":after_min,"after_max":after_max,"after_mean":after_mean, "q_norm_mean":q_norm_mean,"k_norm_mean":k_norm_mean})
             else:
             '''
-            wandb.log({'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
-        "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"after_min":after_min,"after_max":after_max,"after_mean":after_mean})
+            log_dict = {'epoch': epoch, 'train_loss': trainloss, 'val_loss': val_loss, "val_acc": acc, "lr": optimizer.param_groups[0]["lr"],
+        "epoch_time": time.time()-start,"matrix_max":max,"matrix_mean":mean,"matrix_min":min,"before_min":before_min,"before_max":before_max,"before_mean":before_mean,"after_min":after_min,"after_max":after_max,"after_mean":after_mean,
+        }
+            # f'diffnorm:{layer}':diffnorm[layer][1] 
+            for layer in range(args.depth):
+                log_dict[f'diffnorm:{layer}'] = diffnorm[layer]
+            wandb.log(log_dict)
             #for layer in range(args.depth):
             #    wandb.log({f'diffnorm:{layer}':diffnorm[layer][1]})
         else:
@@ -563,7 +569,8 @@ for epoch in range(start_epoch, args.n_epochs):
         writer.writerow(list_acc) 
     print(list_loss)
 
-torch.save(net.state_dict(), '//scratch/izar/yuma/weight/{}_lr{}_{}_depth{}_{}.pt',format(args.net, args.lr,args.dataset,args.depth))
+torch.save(net.state_dict(), './weight/{}_lr{}_{}_depth{}.pt',format(args.net, args.lr,args.dataset,args.depth))
+#torch.save(net.state_dict(), '//scratch/izar/yuma/weight/{}_lr{}_{}_depth{}.pt',format(args.net, args.lr,args.dataset,args.depth))
 
 # writeout wandb
 if usewandb:
